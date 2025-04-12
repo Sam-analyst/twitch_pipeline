@@ -1,5 +1,7 @@
 import logging
+from typing import List
 
+import numpy as np
 import pandas as pd
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from src.utils.df_transform_utils import (
@@ -96,9 +98,18 @@ def process_streams_data(
         # create streams_fct table
         groupby_cols = ["id", "user_id", "game_id", "snapshot_date"]
 
-        # lambda function, which we'll use next
-        def distinct_array(x):
-            return list(sorted(set(x)))
+        # define lambda function, which we'll use next
+        def distinct_array(x: pd.Series) -> List[str]:
+            """Helper function to get distinct list from series of np.ndarrays"""
+
+            flattened_list = [
+                item
+                for sublist in x
+                if isinstance(sublist, np.ndarray)  # Prevents iteration over None
+                for item in sublist
+            ]
+
+            return list(sorted(set(flattened_list)))
 
         streams_fct = (
             streams_df.groupby(groupby_cols)
@@ -109,9 +120,7 @@ def process_streams_data(
                 language=("language", "first"),
                 tags_used=(
                     "tags",
-                    lambda x: distinct_array(
-                        [item for sublist in x for item in sublist]
-                    ),
+                    lambda x: distinct_array(x),
                 ),
                 is_mature=("is_mature", "first"),
             )
