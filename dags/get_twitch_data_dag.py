@@ -19,7 +19,7 @@ with DAG(
     "get_raw_twitch_data",
     description="Gets raw twitch data from their API and saves two files as parquet to s3",
     default_args=default_args,
-    schedule_interval=None,
+    schedule_interval="0 */4 * * *",  # Every 4 hours at minute 0
     start_date=datetime.datetime(2025, 1, 1),
     catchup=False,
 ) as dag:

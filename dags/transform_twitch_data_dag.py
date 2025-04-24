@@ -25,7 +25,7 @@ with DAG(
     "transform_raw_twitch_data",
     description="Transforms raw twitch data, saves it to s3 as a parquet, then uploads it into iceberg",
     default_args=default_args,
-    schedule_interval=None,
+    schedule_interval="0 0 * * *",
     start_date=datetime.datetime(2025, 1, 1),
     catchup=False,
     params={

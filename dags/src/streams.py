@@ -96,38 +96,25 @@ def process_streams_data(
         ]
 
         # create streams_fct table
-        groupby_cols = ["id", "user_id", "game_id", "snapshot_date"]
-
-        # define lambda function, which we'll use next
-        def distinct_array(x: pd.Series) -> List[str]:
-            """Helper function to get distinct list from series of np.ndarrays"""
-
-            flattened_list = [
-                item
-                for sublist in x
-                if isinstance(sublist, np.ndarray)  # Prevents iteration over None
-                for item in sublist
-            ]
-
-            return list(sorted(set(flattened_list)))
-
         streams_fct = (
-            streams_df.groupby(groupby_cols)
-            .agg(
-                avg_viewers=("viewer_count", "mean"),
-                title=("title", "first"),
-                started_at=("started_at", "min"),
-                language=("language", "first"),
-                tags_used=(
+            streams_df[
+                [
+                    "id",
+                    "user_id",
+                    "game_id",
+                    "snapshot_date",
+                    "snapshot_datetime",
+                    "viewer_count",
+                    "title",
+                    "started_at",
+                    "language",
                     "tags",
-                    lambda x: distinct_array(x),
-                ),
-                is_mature=("is_mature", "first"),
-            )
-            .reset_index()
+                    "is_mature",
+                ]
+            ]
+            .rename(columns={"id": "stream_id"})
+            .reset_index(drop=True)
         )
-
-        streams_fct.rename(columns={"id": "stream_id"}, inplace=True)
 
         # write streamers dim
         write_parquet_to_s3(
@@ -228,7 +215,9 @@ def insert_into_streams_fct(s3_hook: S3Hook, s3_bucket: str, **kwargs) -> None:
 
         # adjust data types to avoid errors with iceberg
         streams_fct["snapshot_date"] = streams_fct["snapshot_date"].astype("int")
-        streams_fct["avg_viewers"] = streams_fct["avg_viewers"].astype("float")
+        streams_fct["snapshot_datetime"] = pd.to_datetime(
+            streams_fct["snapshot_datetime"], format="%Y%m%d_T%H%M%SZ", utc=True
+        ).dt.tz_localize(None)
         streams_fct["started_at"] = pd.to_datetime(
             streams_fct["started_at"]
         ).dt.tz_localize(None)
