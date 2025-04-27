@@ -1,48 +1,66 @@
-Overview
-========
+# twitch_pipeline
+This repository contains logic for a Twitch data pipeline built using **Astronomer** (Airflow).
 
-Welcome to Astronomer! This project was generated after you ran 'astro dev init' using the Astronomer CLI. This readme describes the contents of the project, as well as how to run Apache Airflow on your local machine.
+There are two DAGs in this repo:
+- **`get_raw_twitch_data`** - Runs every 4 hours. Extracts Twitch data via their public API and stores the raw data into an AWS S3 bucket.
+- **`transform_raw_twitch_data`** - Runs once per day. Transforms the raw data and loads it into Apache Iceberg tables.
 
-Project Contents
-================
+### Setup 
+---
 
-Your Astro project contains the following files and folders:
+This section outlines how to run the pipeline locally and what’s needed from AWS.
 
-- dags: This folder contains the Python files for your Airflow DAGs. By default, this directory includes one example DAG:
-    - `example_astronauts`: This DAG shows a simple ETL pipeline example that queries the list of astronauts currently in space from the Open Notify API and prints a statement for each astronaut. The DAG uses the TaskFlow API to define tasks in Python, and dynamic task mapping to dynamically print a statement for each astronaut. For more on how this DAG works, see our [Getting started tutorial](https://www.astronomer.io/docs/learn/get-started-with-airflow).
-- Dockerfile: This file contains a versioned Astro Runtime Docker image that provides a differentiated Airflow experience. If you want to execute other commands or overrides at runtime, specify them here.
-- include: This folder contains any additional files that you want to include as part of your project. It is empty by default.
-- packages.txt: Install OS-level packages needed for your project by adding them to this file. It is empty by default.
-- requirements.txt: Install Python packages needed for your project by adding them to this file. It is empty by default.
-- plugins: Add custom or community plugins for your project to this file. It is empty by default.
-- airflow_settings.yaml: Use this local-only file to specify Airflow Connections, Variables, and Pools instead of entering them in the Airflow UI as you develop DAGs in this project.
+#### Local Environment
 
-Deploy Your Project Locally
-===========================
+1. Clone this repo onto your local machine.
+``` bash
+git clone https://github.com/Sam-analyst/twitch_pipeline.git
+```
+2. Install the Astro CLI: Follow these [intructions](https://www.astronomer.io/docs/astro/cli/install-cli?tab=linux#install-the-astro-cli) for installation.
 
-1. Start Airflow on your local machine by running 'astro dev start'.
+3. Create a `.env` file.
+``` bash
+touch .env
+```
+Add the following environment variables (replace with your own values):
+```
+TWITCH_CLIENT_ID="your-twitch-client-id"
+TWITCH_ACCESS_TOKEN="your-twitch-access-token"
+AWS_ACCESS_KEY_ID="your-aws-key-id"
+AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
+AWS_DEFAULT_REGION="your-aws-default-region"
+```
+- For Twitch credentials, follow the instructions [here](https://github.com/Sam-analyst/twitch_game_analytics/blob/main/README.md).
+- For AWS credentials, create a new IAM user and access keys in the AWS Console.
 
-This command will spin up 4 Docker containers on your machine, each for a different Airflow component:
+4. Email on DAG failure (Optional): The DAGs are configured to send email alerts on failure (currently set to my email). If you'd like to configure this for yourself:
+    - Watch this [YouTube video](https://www.youtube.com/watch?v=D18G7hW8418).
+    - Refer to Astronmer's [email notification guide](https://www.astronomer.io/docs/astro/airflow-email-notifications/).
 
-- Postgres: Airflow's Metadata Database
-- Webserver: The Airflow component responsible for rendering the Airflow UI
-- Scheduler: The Airflow component responsible for monitoring and triggering tasks
-- Triggerer: The Airflow component responsible for triggering deferred tasks
+5. Start the Airflow environment
+```
+astro dev start
+```
+Then go to [localhost:8080](http://localhost:8080) to access the UI.
 
-2. Verify that all 4 Docker containers were created by running 'docker ps'.
+6. Set up Airflow AWS connection:
+    -  In the Airflow UI: go to **Admin > Connections**
+    -  Create a new connection called `aws_conn` with the following configurations:
+        - Conn ID: `aws_conn`
+        - Conn Type: `Amazon Web Services`
+        - AWS Access Key ID: your `AWS_ACCESS_KEY_ID`
+        - AWS Secret Access Key: your `AWS_SECRET_ACCESS_KEY`
+        - Extra: `{"AWS_DEFAULT_REGION": "your-aws-default-region"}`
 
-Note: Running 'astro dev start' will start your project with the Airflow Webserver exposed at port 8080 and Postgres exposed at port 5432. If you already have either of those ports allocated, you can either [stop your existing Docker containers or change the port](https://www.astronomer.io/docs/astro/cli/troubleshoot-locally#ports-are-not-available-for-my-local-airflow-webserver).
+#### Infrastructure
+- The pipeline writes to a personal S3 bucket. To use your own:
+    - Create a new bucket in AWS S3.
+    - Update the DAG code to reference your new bucket name.
 
-3. Access the Airflow UI for your local Airflow project. To do so, go to http://localhost:8080/ and log in with 'admin' for both your Username and Password.
-
-You should also be able to access your Postgres Database at 'localhost:5432/postgres'.
-
-Deploy Your Project to Astronomer
-=================================
-
-If you have an Astronomer account, pushing code to a Deployment on Astronomer is simple. For deploying instructions, refer to Astronomer documentation: https://www.astronomer.io/docs/astro/deploy-code/
-
-Contact
-=======
-
-The Astronomer CLI is maintained with love by the Astronomer team. To report a bug or suggest a change, reach out to our support.
+- Iceberg Tables:
+    - These must be created manually.
+    - Use AWS Athena to define the tables.
+    - Register the tables in AWS Glue so that pyiceberg can interact with the tables.
+ 
+#### Additonal notes
+- The aws credentials are being defined in two places. This is not ideal, but I couldn't get pyiceberg to recognize the `aws_conn` object. Ideally, we should use the `aws_conn` connection for authentication with pyiceberg.
